@@ -25,7 +25,7 @@ fn main() {
         let err = p.stdout.take().expect("No std error");
         let reader = BufReader::new(err);
 
-        let mut error_count = 0;
+        let mut ready = false;
 
         for line in reader.lines() {
             if rx.try_recv().is_ok() {
@@ -34,11 +34,13 @@ fn main() {
             }
             if let Ok(l) = line {
                 if l.contains("Unable to cleanup NvFBC") {
-                    error_count += 1;
-                    if error_count >= 2 {
+                    if ready {
                         println!("Sunshine server failed. Restarting...");
                         cleanup(&mut p);
                     }
+                }
+                if l.contains("Configuration UI available") { 
+                    ready = true
                 }
             }
         }
