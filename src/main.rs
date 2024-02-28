@@ -49,6 +49,6 @@ fn main() {
             Err(e) => println!("Error waiting sunshine's determination: {e}")
         }
 
-        println!("Sunshine server failed unexpected. Restarting...")
+        eprintln!("Sunshine server failed unexpected. Restarting...")
     }
 }
