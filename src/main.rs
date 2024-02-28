@@ -22,7 +22,7 @@ fn main() {
             })
                 .expect("Failed to start sunshine as subprocess");
 
-        let err = p.stderr.take().expect("No std error");
+        let err = p.stdout.take().expect("No std error");
         let reader = BufReader::new(err);
 
         for line in reader.lines() {
