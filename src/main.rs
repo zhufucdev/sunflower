@@ -25,15 +25,20 @@ fn main() {
         let err = p.stdout.take().expect("No std error");
         let reader = BufReader::new(err);
 
+        let mut error_count = 0;
+
         for line in reader.lines() {
             if rx.try_recv().is_ok() {
                 cleanup(&mut p);
-                break 'l
+                break 'l;
             }
             if let Ok(l) = line {
                 if l.contains("Unable to cleanup NvFBC") {
-                    println!("Sunshine server failed. Restarting...");
-                    cleanup(&mut p);
+                    error_count += 1;
+                    if error_count >= 2 {
+                        println!("Sunshine server failed. Restarting...");
+                        cleanup(&mut p);
+                    }
                 }
             }
         }
@@ -43,7 +48,7 @@ fn main() {
             Ok(_) => {
                 if rx.try_recv().is_ok() {
                     cleanup(&mut p);
-                    break 'l
+                    break 'l;
                 }
             }
             Err(e) => println!("Error waiting sunshine's determination: {e}")
