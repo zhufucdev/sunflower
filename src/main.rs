@@ -1,5 +1,7 @@
 use std::io::{BufRead, BufReader};
 use std::sync::mpsc::channel;
+use std::thread::sleep;
+use std::time::Duration;
 use subprocess::{Popen, PopenConfig, Redirection};
 
 fn cleanup(p: &mut Popen) {
@@ -56,6 +58,7 @@ fn main() {
             Err(e) => println!("Error waiting sunshine's determination: {e}")
         }
 
-        eprintln!("Sunshine server failed unexpected. Restarting...")
+        eprintln!("Sunshine server failed unexpected. Restarting...");
+        sleep(Duration::from_secs(5));
     }
 }
