@@ -66,7 +66,11 @@ fn main() {
             println!("Error waiting for sunshine's termination: {e}")
         }
 
-        eprintln!("Sunshine server failed unexpected. Restarting...");
+        if !*canceled.lock().unwrap() {
+            eprintln!("Sunshine server failed unexpected. Restarting...");
+        } else {
+            println!("Waiting for ping threads to exit");
+        }
         for handle in handles {
             handle.join().unwrap();
         }
