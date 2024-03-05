@@ -6,13 +6,12 @@ use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::Duration;
-use reqwest::StatusCode;
 
 #[derive(Clone)]
 pub struct PingContext {
     pub stdout: Arc<Mutex<File>>,
     pub canceled: Arc<Mutex<bool>>,
-    pub fail_rx: Arc<Mutex<Receiver<()>>>,
+    pub failed: Arc<Mutex<bool>>,
     pub fail_tx: Sender<()>,
     pub ready_rx: Arc<Mutex<Receiver<()>>>,
     pub ready_tx: Sender<()>,
@@ -34,15 +33,13 @@ impl Ping for HttpPing {
         
         loop {
             let cancelled = *context.canceled.lock().unwrap();
-            let failed = context.fail_rx.lock().unwrap().try_recv().is_ok();
+            let failed = *context.failed.lock().unwrap();
             if cancelled || failed { break }
             thread::sleep(Duration::from_secs(10));
-            if let Ok(res) = reqwest::blocking::get(format!("{}:{}", self.host, self.port)) {
-                if res.status() != StatusCode::OK {
-                    context.fail_tx.send(()).unwrap();
-                    break;
-                }
+            if let Ok(_) = reqwest::blocking::get(format!("{}:{}", self.host, self.port)) {
+                continue;
             }
+            context.fail_tx.send(()).unwrap();
         }
     }
 }

@@ -10,10 +10,10 @@ use crate::ping::{HttpPing, Ping, PingContext, StdoutPing};
 
 #[derive(Parser)]
 struct Cli {
-    #[arg(default_value_t = 47990)]
-    port: u16,
     #[arg(default_value = "http://localhost")]
     host: String,
+    #[arg(default_value_t = 47990)]
+    port: u16,
 }
 
 fn main() {
@@ -41,7 +41,7 @@ fn main() {
             stdout: Arc::new(Mutex::new(process.stdout.take().unwrap())),
             ready_tx,
             ready_rx: Arc::new(Mutex::new(ready_rx)),
-            fail_rx: Arc::new(Mutex::new(fail_rx)),
+            failed: Arc::new(Mutex::new(false)),
             fail_tx,
             canceled: canceled.clone(),
         });
@@ -59,7 +59,8 @@ fn main() {
             })(context.clone(), http_ping.clone())
         ];
 
-        context.fail_rx.lock().unwrap().recv().unwrap();
+        fail_rx.recv().unwrap();
+        *context.failed.lock().unwrap() = true;
         cleanup(&mut process);
 
         if let Err(e) = process.wait() {
