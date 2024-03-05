@@ -59,6 +59,7 @@ fn main() {
             })(context.clone(), http_ping.clone())
         ];
 
+        context.fail_rx.lock().unwrap().recv().unwrap();
         cleanup(&mut process);
 
         if let Err(e) = process.wait() {
