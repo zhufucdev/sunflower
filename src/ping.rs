@@ -72,7 +72,7 @@ impl Ping for StdoutPing {
                 break;
             }
             if let Ok(l) = line {
-                if l.contains("Unable to cleanup NvFBC") {
+                if l.contains("CreateBitstreamBuffer failed: out of memory") {
                     if ready {
                         context.fail_tx.send(FailureWhere::NvFBC).unwrap();
                         break;
