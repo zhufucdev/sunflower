@@ -62,7 +62,7 @@ fn main() {
             })(context.clone(), http_ping.clone())
         ];
 
-        fail_rx.recv().unwrap();
+        let failure_where = fail_rx.recv().unwrap();
         *context.failed.lock().unwrap() = true;
         cleanup(&mut process);
 
@@ -71,7 +71,7 @@ fn main() {
         }
 
         if !*canceled.lock().unwrap() {
-            println!("Sunshine server failed. Restarting...");
+            println!("Sunshine server failed at {:?}. Restarting...", failure_where);
         } else {
             println!("Waiting for ping threads to exit");
         }
