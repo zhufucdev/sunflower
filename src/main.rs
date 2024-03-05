@@ -12,7 +12,7 @@ use crate::ping::{HttpPing, Ping, PingContext, StdoutPing};
 struct Cli {
     #[arg(default_value_t = 47990)]
     port: u16,
-    #[arg(default_value = "localhost")]
+    #[arg(default_value = "http://localhost")]
     host: String,
 }
 
@@ -67,7 +67,7 @@ fn main() {
         }
 
         if !*canceled.lock().unwrap() {
-            eprintln!("Sunshine server failed unexpected. Restarting...");
+            println!("Sunshine server failed. Restarting...");
         } else {
             println!("Waiting for ping threads to exit");
         }

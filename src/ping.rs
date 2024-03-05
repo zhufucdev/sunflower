@@ -30,6 +30,8 @@ pub struct HttpPing {
 
 impl Ping for HttpPing {
     fn ping(&self, context: Arc<PingContext>) {
+        context.ready_rx.lock().unwrap().recv().unwrap();
+        
         loop {
             let cancelled = *context.canceled.lock().unwrap();
             let failed = context.fail_rx.lock().unwrap().try_recv().is_ok();
@@ -66,7 +68,6 @@ impl Ping for StdoutPing {
             if let Ok(l) = line {
                 if l.contains("Unable to cleanup NvFBC") {
                     if ready {
-                        println!("Sunshine server failed. Restarting...");
                         context.fail_tx.send(()).unwrap();
                         break;
                     }
