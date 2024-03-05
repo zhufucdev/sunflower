@@ -1,10 +1,8 @@
 mod ping;
 
-use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{channel};
 use std::thread;
-use std::time::Duration;
 use subprocess::{Popen, PopenConfig, Redirection};
 use clap::Parser;
 use crate::ping::{HttpPing, Ping, PingContext, StdoutPing};
@@ -20,53 +18,57 @@ struct Cli {
 
 fn main() {
     let args = Cli::parse();
-    let (cancel_tx, cancel_rx) = channel();
-    let cancel_rx_wrapped = Arc::new(Mutex::new(cancel_rx));
-    ctrlc::set_handler(move || cancel_tx.send(()).expect("Failed to flush cancel signal")).unwrap();
+    let canceled = Arc::new(Mutex::new(false));
+    ctrlc::set_handler((|a: Arc<Mutex<bool>>| { move || *a.lock().unwrap() = true })(canceled.clone())).unwrap();
 
     let stdout_ping = StdoutPing {};
     let http_ping = Arc::new(HttpPing { host: args.host.clone(), port: args.port });
 
-    while cancel_rx_wrapped.lock().unwrap().try_recv().is_err() {
+    loop {
+        if *canceled.lock().unwrap() { break }
+        
         let (ready_tx, ready_rx) = channel();
         let (fail_tx, fail_rx) = channel();
 
+        let mut process = Popen::create(&["sunshine"], PopenConfig {
+            stdout: Redirection::Pipe,
+            stderr: Redirection::Pipe,
+            ..Default::default()
+        })
+            .expect("Failed to start sunshine as subprocess");
+
         let context = Arc::new(PingContext {
-            process: Arc::new(Mutex::new(
-                Popen::create(&["sunshine"], PopenConfig {
-                    stdout: Redirection::Pipe,
-                    stderr: Redirection::Pipe,
-                    ..Default::default()
-                })
-                    .expect("Failed to start sunshine as subprocess")
-            )),
+            stdout: Arc::new(Mutex::new(process.stdout.take().unwrap())),
             ready_tx,
             ready_rx: Arc::new(Mutex::new(ready_rx)),
+            fail_rx: Arc::new(Mutex::new(fail_rx)),
             fail_tx,
-            cancel_rx: cancel_rx_wrapped.clone(),
+            canceled: canceled.clone(),
         });
 
-        (|ctx: Arc<PingContext>| {
-            thread::spawn(move || {
-                stdout_ping.ping(ctx.clone());
-            });
-        })(context.clone());
-        (|ctx: Arc<PingContext>| {
-            http_ping.ping(ctx.clone());
-        })(context.clone());
-        
-        fail_rx.recv().unwrap();
-        cleanup(context.process.lock().unwrap().deref_mut());
+        let handles = [
+            (|ctx: Arc<PingContext>| {
+                thread::spawn(move || {
+                    stdout_ping.ping(ctx.clone());
+                })
+            })(context.clone()),
+            (|ctx: Arc<PingContext>, ping: Arc<HttpPing>| {
+                thread::spawn(move || {
+                    ping.ping(ctx.clone());
+                })
+            })(context.clone(), http_ping.clone())
+        ];
 
-        match context.process.lock().unwrap().wait() {
-            Ok(_) => {
-                if cancel_rx_wrapped.lock().unwrap().try_recv().is_ok() {}
-            }
-            Err(e) => println!("Error waiting for sunshine's termination: {e}")
+        cleanup(&mut process);
+
+        if let Err(e) = process.wait() {
+            println!("Error waiting for sunshine's termination: {e}")
         }
 
         eprintln!("Sunshine server failed unexpected. Restarting...");
-        thread::sleep(Duration::from_secs(5));
+        for handle in handles {
+            handle.join().unwrap();
+        }
     }
 }
 

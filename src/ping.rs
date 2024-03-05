@@ -1,16 +1,18 @@
 use std::clone::Clone;
+use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::Duration;
 use reqwest::StatusCode;
-use subprocess::Popen;
 
 #[derive(Clone)]
 pub struct PingContext {
-    pub process: Arc<Mutex<Popen>>,
-    pub cancel_rx: Arc<Mutex<Receiver<()>>>,
+    pub stdout: Arc<Mutex<File>>,
+    pub canceled: Arc<Mutex<bool>>,
+    pub fail_rx: Arc<Mutex<Receiver<()>>>,
     pub fail_tx: Sender<()>,
     pub ready_rx: Arc<Mutex<Receiver<()>>>,
     pub ready_tx: Sender<()>,
@@ -28,11 +30,15 @@ pub struct HttpPing {
 
 impl Ping for HttpPing {
     fn ping(&self, context: Arc<PingContext>) {
-        while context.cancel_rx.lock().unwrap().try_recv().is_err() {
+        loop {
+            let cancelled = *context.canceled.lock().unwrap();
+            let failed = context.fail_rx.lock().unwrap().try_recv().is_ok();
+            if cancelled || failed { break }
             thread::sleep(Duration::from_secs(10));
             if let Ok(res) = reqwest::blocking::get(format!("{}:{}", self.host, self.port)) {
                 if res.status() != StatusCode::OK {
                     context.fail_tx.send(()).unwrap();
+                    break;
                 }
             }
         }
@@ -44,30 +50,35 @@ pub struct StdoutPing {}
 
 impl Ping for StdoutPing {
     fn ping(&self, context: Arc<PingContext>) {
-        while context.cancel_rx.lock().unwrap().try_recv().is_err() {
-            let err = context.process.lock().unwrap().stdout.take().expect("No std out");
-            let reader = BufReader::new(err);
+        if *context.canceled.lock().unwrap() {
+            return;
+        }
+        
+        let stdout = context.stdout.lock().unwrap();
+        let reader = BufReader::new(stdout.deref());
 
-            let mut ready = false;
+        let mut ready = false;
 
-            for line in reader.lines() {
-                if context.cancel_rx.lock().unwrap().try_recv().is_ok() {
-                    context.fail_tx.send(()).unwrap();
+        for line in reader.lines() {
+            if *context.canceled.lock().unwrap() {
+                break;
+            }
+            if let Ok(l) = line {
+                if l.contains("Unable to cleanup NvFBC") {
+                    if ready {
+                        println!("Sunshine server failed. Restarting...");
+                        context.fail_tx.send(()).unwrap();
+                        break;
+                    }
                 }
-                if let Ok(l) = line {
-                    if l.contains("Unable to cleanup NvFBC") {
-                        if ready {
-                            println!("Sunshine server failed. Restarting...");
-                            context.fail_tx.send(()).unwrap();
-                        }
-                    }
-                    if l.contains("Configuration UI available") && !ready {
-                        ready = true;
-                        context.ready_tx.send(()).unwrap();
-                    }
+                if l.contains("Configuration UI available") && !ready {
+                    ready = true;
+                    context.ready_tx.send(()).unwrap();
                 }
             }
         }
+
+        context.fail_tx.send(()).unwrap();
     }
 }
 
