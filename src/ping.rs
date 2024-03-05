@@ -1,6 +1,7 @@
 use std::clone::Clone;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
+use std::net::{Shutdown, TcpStream};
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use std::sync::mpsc::{Receiver, Sender};
@@ -30,16 +31,20 @@ pub struct HttpPing {
 impl Ping for HttpPing {
     fn ping(&self, context: Arc<PingContext>) {
         context.ready_rx.lock().unwrap().recv().unwrap();
-        
+
         loop {
             let cancelled = *context.canceled.lock().unwrap();
             let failed = *context.failed.lock().unwrap();
-            if cancelled || failed { break }
+            if cancelled || failed { break; }
             thread::sleep(Duration::from_secs(10));
-            if let Ok(_) = reqwest::blocking::get(format!("{}:{}", self.host, self.port)) {
-                continue;
+            let mut stream = TcpStream::connect(format!("{}:{}", self.host, self.port))
+                .expect("Failed to launch test connection");
+            stream.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+            let mut buf = [0u8; 8];
+            if stream.read(&mut buf).is_err() {
+                context.fail_tx.send(()).unwrap();
             }
-            context.fail_tx.send(()).unwrap();
+            stream.shutdown(Shutdown::Both).expect("Test connection shutdown failed");
         }
     }
 }
@@ -52,7 +57,7 @@ impl Ping for StdoutPing {
         if *context.canceled.lock().unwrap() {
             return;
         }
-        
+
         let stdout = context.stdout.lock().unwrap();
         let reader = BufReader::new(stdout.deref());
 

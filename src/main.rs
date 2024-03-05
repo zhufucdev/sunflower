@@ -10,7 +10,7 @@ use crate::ping::{HttpPing, Ping, PingContext, StdoutPing};
 
 #[derive(Parser)]
 struct Cli {
-    #[arg(default_value = "http://localhost")]
+    #[arg(default_value = "localhost")]
     host: String,
     #[arg(default_value_t = 47990)]
     port: u16,
@@ -22,11 +22,14 @@ fn main() {
     ctrlc::set_handler((|a: Arc<Mutex<bool>>| { move || *a.lock().unwrap() = true })(canceled.clone())).unwrap();
 
     let stdout_ping = StdoutPing {};
-    let http_ping = Arc::new(HttpPing { host: args.host.clone(), port: args.port });
+    let http_ping = Arc::new(HttpPing {
+        host: args.host.clone(),
+        port: args.port,
+    });
 
     loop {
-        if *canceled.lock().unwrap() { break }
-        
+        if *canceled.lock().unwrap() { break; }
+
         let (ready_tx, ready_rx) = channel();
         let (fail_tx, fail_rx) = channel();
 
