@@ -19,3 +19,8 @@ The machine will have to get at minimum rustup installed, through which it insta
 rustup default
 cargo run -- https://localhost
 ```
+
+## Limitations
+
+- Sunshine will be reporting `Info: Web UI: [127.0.0.1] -- not authorized` because of the http pings
+- Nothing aside from modifying the source can be done to disable any of the restart trigger
